@@ -30,8 +30,11 @@ fi
 
 cd "$AGREG_DIR"
 
-# Lancer Claude en mode non-interactif via stdin (contourne le problème de passage
-# du prompt multi-ligne en argument positional).
+# Charge GH_TOKEN pour permettre git push vers le repo privé (via gh credential helper)
+# shellcheck disable=SC1090
+[ -f "$HOME/.config/agreg/env" ] && source "$HOME/.config/agreg/env"
+
+# Lancer Claude en mode non-interactif via stdin
 if cat "$AGREG_DIR/prompts/generer.md" | "$CLAUDE_BIN" \
      --print \
      --permission-mode acceptEdits \
@@ -41,6 +44,19 @@ if cat "$AGREG_DIR/prompts/generer.md" | "$CLAUDE_BIN" \
   echo "[$DATE $(date +%H:%M:%S)] Génération OK" >> "$LOG"
 else
   echo "[$DATE $(date +%H:%M:%S)] ERREUR génération (code $?)" >> "$LOG"
+fi
+
+# Pousse la fiche vers GitHub pour que la page la voie
+if [ -f "$AGREG_DIR/fiches/$DATE.md" ]; then
+  if git -C "$AGREG_DIR" add fiches/ etat.json validations/ 2>/dev/null && \
+     git -C "$AGREG_DIR" diff --cached --quiet; then
+    echo "[$DATE $(date +%H:%M:%S)] Rien à pousser" >> "$LOG"
+  else
+    git -C "$AGREG_DIR" commit -m "fiche $DATE" >> "$LOG" 2>&1 || true
+    git -C "$AGREG_DIR" push >> "$LOG" 2>&1 \
+      && echo "[$DATE $(date +%H:%M:%S)] Push OK" >> "$LOG" \
+      || echo "[$DATE $(date +%H:%M:%S)] Push échoué" >> "$LOG"
+  fi
 fi
 
 echo "[$DATE $(date +%H:%M:%S)] --- Fin ---" >> "$LOG"
