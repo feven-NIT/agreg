@@ -1,0 +1,108 @@
+name: Validate rédaction
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: contains(github.event.issue.labels.*.name, 'agreg-redaction')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Anthropic SDK
+        run: pip install --quiet anthropic==0.40.0
+
+      - name: Call Claude to validate
+        id: validate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          python - <<'PY'
+          import os, re, pathlib, anthropic, sys, glob
+          body = os.environ["ISSUE_BODY"]
+          # Extraire la date
+          m = re.search(r"\*\*Date fiche\*\*\s*:\s*(\d{4}-\d{2}-\d{2})", body)
+          date = m.group(1) if m else None
+          # Récupérer la rédaction
+          redaction = body.split("---", 1)[1].strip() if "---" in body else body.strip()
+          # Trouver la fiche
+          fiche_path = None
+          if date and pathlib.Path(f"fiches/{date}.md").exists():
+              fiche_path = f"fiches/{date}.md"
+          else:
+              fiches = sorted(glob.glob("fiches/*.md"), reverse=True)
+              fiche_path = fiches[0] if fiches else None
+          if not fiche_path:
+              print("Aucune fiche trouvée", file=sys.stderr)
+              sys.exit(1)
+          fiche = pathlib.Path(fiche_path).read_text()
+          # Charger le prompt de validation
+          valider_prompt = pathlib.Path("prompts/valider.md").read_text()
+
+          client = anthropic.Anthropic()
+          user_message = f"""{valider_prompt}
+
+---
+
+## Fiche du jour
+{fiche}
+
+---
+
+## Rédaction de Florian
+
+{redaction}
+
+---
+
+Produis UNIQUEMENT la validation au format Markdown demandé, commençant par `# Validation — Jour`. Pas de préambule, pas de salutation. Ne lis aucun fichier ni ne fais aucun appel d'outil — réponds directement avec la validation.
+"""
+          msg = client.messages.create(
+              model="claude-sonnet-4-5",
+              max_tokens=2000,
+              messages=[{"role": "user", "content": user_message}]
+          )
+          validation = msg.content[0].text
+          out = f"<!-- agreg-validation -->\n{validation}"
+          pathlib.Path("validation_output.md").write_text(out)
+          print("OK")
+          PY
+
+      - name: Post validation as comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body-file validation_output.md --repo "$GITHUB_REPOSITORY"
+
+      - name: Save validation to repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          mkdir -p validations
+          cp validation_output.md "validations/${DATE}-issue${{ github.event.issue.number }}.md"
+          git config user.name "agreg-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add validations/
+          git commit -m "validation issue #${{ github.event.issue.number }}" || echo "rien à commiter"
+          git push || true
+
+      - name: Close issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue close "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY"

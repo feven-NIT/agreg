@@ -1,0 +1,11 @@
+{
+  "jour": 1,
+  "sujet_courant_id": 2,
+  "date_debut": "2026-11-20",
+  "derniere_fiche": "2026-11-20",
+  "derniere_validation": null,
+  "historique": [
+    {"jour": 1, "date": "2026-11-20", "sujet_id": 1, "titre": "Relations d'équivalence et quotients"}
+  ],
+  "notes": "Progression redémarre à sujet_courant_id. Sautés listés dans sujets_sautes."
+}

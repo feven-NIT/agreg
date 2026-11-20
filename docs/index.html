@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0b0e14">
+<title>Agrégation Maths 2027</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --fg: #e6e1cf;
+    --muted: #6c7380;
+    --accent: #ffb454;
+    --good: #7fd962;
+    --bad: #ff6b6b;
+    --card: #131720;
+    --border: #1f2430;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--fg); margin: 0; padding: 0;
+    font-family: -apple-system, system-ui, sans-serif; line-height: 1.5; font-size: 16px; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; padding-bottom: 80px; }
+  header { padding: 8px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; color: var(--accent); }
+  header .date { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+  .fiche { font-size: 15px; }
+  .fiche h1 { font-size: 20px; }
+  .fiche h2 { font-size: 17px; margin-top: 20px; color: var(--accent); text-transform: none; letter-spacing: normal; }
+  .fiche h3 { font-size: 15px; margin-top: 16px; color: var(--fg); }
+  .fiche code { background: #1a1f2a; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+  .fiche blockquote { border-left: 3px solid var(--accent); margin: 12px 0; padding: 4px 12px;
+    background: rgba(255, 180, 84, 0.08); color: var(--fg); }
+  .fiche details { background: #1a1f2a; border-radius: 6px; padding: 8px 12px; margin: 10px 0; }
+  .fiche details summary { cursor: pointer; color: var(--accent); font-weight: 500; user-select: none; }
+  .fiche hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+  textarea { width: 100%; min-height: 240px; background: #0e1118; border: 1px solid var(--border);
+    color: var(--fg); padding: 12px; border-radius: 8px; font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 14px; resize: vertical; line-height: 1.45; }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  button { background: var(--accent); color: #0b0e14; border: 0; padding: 12px 20px; border-radius: 8px;
+    font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; margin-top: 12px; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .status { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; }
+  .validation { white-space: pre-wrap; font-size: 14px; }
+  .verdict-VALIDÉ, .verdict-ok { color: var(--good); font-weight: 600; }
+  .verdict-PARTIEL, .verdict-partiel { color: var(--accent); font-weight: 600; }
+  .verdict-REPRENDRE, .verdict-ko { color: var(--bad); font-weight: 600; }
+  #setup { display: none; }
+  #setup.on { display: block; }
+  #app { display: none; }
+  #app.on { display: block; }
+  input[type=password], input[type=text] { width: 100%; background: #0e1118; border: 1px solid var(--border);
+    color: var(--fg); padding: 10px; border-radius: 6px; font-size: 14px; }
+  label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  .error { color: var(--bad); font-size: 13px; margin-top: 8px; }
+  nav { margin-bottom: 12px; display: flex; gap: 8px; }
+  nav button { flex: 1; padding: 8px; font-size: 13px; margin: 0; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Agrégation Maths 2027</h1>
+  <div class="date" id="today-date"></div>
+</header>
+
+<!-- SETUP -->
+<section id="setup">
+  <div class="card">
+    <h2>Configuration (1 fois)</h2>
+    <p>Pour que cette page lise ta fiche et crée tes rédactions dans ton repo privé, elle a besoin d'un token GitHub.</p>
+    <p><strong>Crée un fine-grained PAT :</strong></p>
+    <ol>
+      <li>Ouvre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">github.com/settings/personal-access-tokens/new</a></li>
+      <li>Nom : <code>agreg-mobile</code>, expiration : 1 an</li>
+      <li>Repository access : <strong>Only select repositories</strong> → choisis <code>agreg</code></li>
+      <li>Permissions :
+        <ul>
+          <li>Contents → <strong>Read</strong></li>
+          <li>Issues → <strong>Read and write</strong></li>
+        </ul>
+      </li>
+      <li>Génère, copie, colle ci-dessous.</li>
+    </ol>
+    <label>Token</label>
+    <input type="password" id="token-input" placeholder="github_pat_...">
+    <label>Owner/repo (ne change pas sauf si tu as renommé)</label>
+    <input type="text" id="repo-input" value="feven-NIT/agreg">
+    <button id="save-token">Enregistrer</button>
+    <div class="error" id="setup-error"></div>
+  </div>
+</section>
+
+<!-- APP -->
+<section id="app">
+  <nav>
+    <button class="secondary" id="btn-today">Aujourd'hui</button>
+    <button class="secondary" id="btn-history">Historique</button>
+    <button class="secondary" id="btn-settings">Réglages</button>
+  </nav>
+
+  <div class="card" id="fiche-card">
+    <h2>Fiche du jour</h2>
+    <div class="fiche" id="fiche-content">Chargement…</div>
+  </div>
+
+  <div class="card" id="redaction-card">
+    <h2>Ma rédaction</h2>
+    <textarea id="redaction" placeholder="Rédige ta solution. LaTeX inline : $x^2$. Abréviations OK : forall, exists, =>, in, cap, ker, Im, oplus…"></textarea>
+    <button id="submit-btn">Soumettre pour validation</button>
+    <div class="status" id="submit-status"></div>
+  </div>
+
+  <div class="card" id="validation-card" style="display:none;">
+    <h2>Validation Claude</h2>
+    <div class="fiche validation" id="validation-content">En attente…</div>
+  </div>
+</section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+<script>
+const LS_TOKEN = 'agreg_pat';
+const LS_REPO = 'agreg_repo';
+const LS_LAST_ISSUE = 'agreg_last_issue';
+
+const token = () => localStorage.getItem(LS_TOKEN);
+const repo = () => localStorage.getItem(LS_REPO) || 'feven-NIT/agreg';
+const today = () => new Date().toISOString().slice(0, 10);
+
+function ghHeaders() {
+  return {
+    'Authorization': `Bearer ${token()}`,
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+}
+
+async function gh(path, opts = {}) {
+  const r = await fetch(`https://api.github.com/repos/${repo()}${path}`, {
+    ...opts, headers: { ...ghHeaders(), 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (!r.ok) throw new Error(`GH ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+async function fetchFiche(date) {
+  // Essaie la date demandée, sinon prend la plus récente
+  try {
+    const f = await gh(`/contents/fiches/${date}.md`);
+    return { md: atob(f.content.replace(/\n/g, '')), date };
+  } catch (e) {
+    const list = await gh(`/contents/fiches`);
+    if (!list.length) throw new Error('Aucune fiche dans le repo');
+    const sorted = list.filter(x => x.name.endsWith('.md')).sort((a, b) => b.name.localeCompare(a.name));
+    if (!sorted.length) throw new Error('Aucune fiche');
+    const latest = await gh(`/contents/${sorted[0].path}`);
+    return { md: atob(latest.content.replace(/\n/g, '')), date: sorted[0].name.replace('.md', '') };
+  }
+}
+
+function renderMarkdown(md, el) {
+  el.innerHTML = marked.parse(md);
+  renderMathInElement(el, {
+    delimiters: [
+      { left: '$$', right: '$$', display: true },
+      { left: '$', right: '$', display: false }
+    ],
+    throwOnError: false
+  });
+}
+
+function hideCorrection(container) {
+  // Masque la section Correction en remplaçant ses details par un message
+  const headers = container.querySelectorAll('h2');
+  headers.forEach(h => {
+    if (/correction/i.test(h.textContent)) {
+      let node = h.nextElementSibling;
+      while (node && node.tagName !== 'H2') {
+        const next = node.nextElementSibling;
+        node.remove();
+        node = next;
+      }
+      h.insertAdjacentHTML('afterend',
+        '<p style="color:var(--muted);font-size:13px;">🔒 Correction masquée — tu la verras dans la validation.</p>');
+    }
+  });
+}
+
+async function loadToday() {
+  const el = document.getElementById('fiche-content');
+  el.textContent = 'Chargement de la fiche…';
+  try {
+    const { md, date } = await fetchFiche(today());
+    document.getElementById('today-date').textContent = `Fiche du ${date}`;
+    renderMarkdown(md, el);
+    hideCorrection(el);
+  } catch (e) {
+    el.innerHTML = `<p class="error">Erreur : ${e.message}</p>
+      <p style="color:var(--muted);">Vérifie que le token a bien accès au repo et qu'une fiche a été générée.</p>`;
+  }
+}
+
+async function submitRedaction() {
+  const red = document.getElementById('redaction').value.trim();
+  if (!red) { document.getElementById('submit-status').textContent = 'Rédaction vide.'; return; }
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Envoi…';
+  const status = document.getElementById('submit-status');
+  status.textContent = '';
+  try {
+    const date = today();
+    const issue = await gh('/issues', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `[rédaction] ${date}`,
+        body: `**Date fiche** : ${date}\n\n---\n\n${red}`,
+        labels: ['agreg-redaction']
+      })
+    });
+    localStorage.setItem(LS_LAST_ISSUE, issue.number);
+    status.textContent = `Soumis (issue #${issue.number}). Attente de la validation…`;
+    btn.textContent = 'En cours…';
+    pollValidation(issue.number);
+  } catch (e) {
+    status.innerHTML = `<span class="error">Erreur : ${e.message}</span>`;
+    btn.disabled = false;
+    btn.textContent = 'Soumettre pour validation';
+  }
+}
+
+async function pollValidation(issueNumber) {
+  const card = document.getElementById('validation-card');
+  const content = document.getElementById('validation-content');
+  card.style.display = 'block';
+  content.textContent = '⏳ Claude analyse ta rédaction (10-40 s)…';
+
+  let attempts = 0;
+  const maxAttempts = 90; // 90 * 3s = 4m30
+  const timer = setInterval(async () => {
+    attempts++;
+    try {
+      const comments = await gh(`/issues/${issueNumber}/comments`);
+      const validation = comments.find(c => c.body.includes('<!-- agreg-validation -->'));
+      if (validation) {
+        clearInterval(timer);
+        renderMarkdown(validation.body.replace('<!-- agreg-validation -->', ''), content);
+        colorizeVerdict(content);
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = false;
+        btn.textContent = 'Soumettre une autre rédaction';
+        document.getElementById('submit-status').textContent = '';
+      } else if (attempts >= maxAttempts) {
+        clearInterval(timer);
+        content.innerHTML = '<p class="error">Timeout — vérifie l\'onglet Actions sur GitHub.</p>';
+      }
+    } catch (e) {
+      content.innerHTML = `<p class="error">${e.message}</p>`;
+      clearInterval(timer);
+    }
+  }, 3000);
+}
+
+function colorizeVerdict(el) {
+  const html = el.innerHTML;
+  el.innerHTML = html
+    .replace(/VALIDÉ/g, '<span class="verdict-VALIDÉ">VALIDÉ</span>')
+    .replace(/PARTIEL/g, '<span class="verdict-PARTIEL">PARTIEL</span>')
+    .replace(/À REPRENDRE|REPRENDRE/g, '<span class="verdict-REPRENDRE">À REPRENDRE</span>');
+}
+
+// -- Setup / init --
+
+function showSetup() { document.getElementById('setup').classList.add('on'); document.getElementById('app').classList.remove('on'); }
+function showApp() { document.getElementById('setup').classList.remove('on'); document.getElementById('app').classList.add('on'); }
+
+document.getElementById('save-token').addEventListener('click', async () => {
+  const t = document.getElementById('token-input').value.trim();
+  const r = document.getElementById('repo-input').value.trim();
+  if (!t || !r) return;
+  localStorage.setItem(LS_TOKEN, t);
+  localStorage.setItem(LS_REPO, r);
+  // Vérif rapide
+  try {
+    const u = await fetch(`https://api.github.com/repos/${r}`, { headers: ghHeaders() });
+    if (!u.ok) throw new Error(`Repo ${r} inaccessible (${u.status})`);
+    showApp();
+    loadToday();
+  } catch (e) {
+    document.getElementById('setup-error').textContent = e.message;
+  }
+});
+
+document.getElementById('submit-btn').addEventListener('click', submitRedaction);
+document.getElementById('btn-today').addEventListener('click', loadToday);
+document.getElementById('btn-settings').addEventListener('click', () => { showSetup(); });
+
+if (token()) { showApp(); loadToday(); }
+else { showSetup(); }
+</script>
+
+</body>
+</html>
