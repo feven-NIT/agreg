@@ -1,101 +1,116 @@
 # Agrégation Mathématiques 2027 — Rituel quotidien
 
-Ce dossier organise ta préparation : **une fiche de cours + un exercice par jour**, généré automatiquement à 22h55 par un job launchd.
+Site mobile : **https://feven-nit.github.io/agreg/**
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  MAC (toujours allumé)                                        │
+│                                                              │
+│  launchd 22h55 ─► generer.sh ─► claude -p                    │
+│                          │                                   │
+│                          ├─► écrit fiches/YYYY-MM-DD.md      │
+│                          └─► git push vers GitHub            │
+│                                                              │
+│  launchd /60s ─► poller.sh                                   │
+│                       │                                      │
+│                       ├─► liste issues "agreg-redaction"     │
+│                       ├─► pour chaque : claude -p valide     │
+│                       ├─► gh issue comment (validation)      │
+│                       └─► gh issue close                     │
+└──────────────────────────────────────────────────────────────┘
+          │ (git)                     │ (gh API)
+          ▼                           ▲
+┌──────────────────────────────────────────────────────────────┐
+│  GITHUB                                                       │
+│  • Repo public feven-NIT/agreg                                │
+│  • GitHub Pages (docs/index.html)                             │
+│  • Issues : rédactions et validations                         │
+└──────────────────────────────────────────────────────────────┘
+          │ (Pages)                   │ (API)
+          ▼                           ▲
+┌──────────────────────────────────────────────────────────────┐
+│  iPhone                                                       │
+│  • Ouvre feven-nit.github.io/agreg/                           │
+│  • Voit la fiche du jour (correction masquée)                 │
+│  • Tape sa rédaction                                          │
+│  • Soumet → crée une issue GitHub                             │
+│  • Attend validation (~60s poller + ~20s claude)              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Pas de clé API payante.** La validation tourne sur le Mac via `claude -p` (ta session Claude Code).
+
+## Setup initial (1 fois)
+
+### Sur le téléphone
+
+1. Va sur **https://feven-nit.github.io/agreg/**
+2. Crée un fine-grained PAT GitHub : https://github.com/settings/personal-access-tokens/new
+   - Repository access : `agreg` uniquement
+   - Permissions : **Contents: Read** + **Issues: Read and write**
+3. Colle dans la page, valide
+4. Ajoute à l'écran d'accueil (Safari → Partager → Sur l'écran d'accueil)
+
+### Sur le Mac
+
+Déjà fait. launchd actifs :
+
+```bash
+launchctl list | grep fr.even.agreg
+# fr.even.agreg        → 22h55, génère la fiche + push
+# fr.even.agreg.poller → chaque 60s, valide les rédactions
+```
 
 ## Boucle quotidienne
 
-```
-22h55        ─► launchd exécute generer.sh
-             ─► Claude lit progression.json + etat.json
-             ─► Écrit fiches/YYYY-MM-DD.md (cours + exo + correction cachée)
-             ─► Met à jour etat.json (jour+1, sujet_courant_id+1)
+1. **22h55 Mac** : fiche générée, push sur GitHub
+2. **Ton réveil / soirée** : tu ouvres la page, bosses l'exo
+3. **Avant de te coucher** : rédiges + soumets
+4. **Dans la minute qui suit** : validation apparaît
 
-À ton réveil ─► Tu ouvres la fiche du jour
-             ─► Tu bosses l'exercice sur papier (30-45 min)
-
-Quand tu veux ─► agreg-valider photo.jpg
-             ─► Claude lit ta rédaction, note ton raisonnement,
-                donne un code de déblocage si validé
-```
-
-## Commandes utiles
-
-Ajoute dans ton `~/.zshrc` :
+## Commandes Mac
 
 ```bash
 alias agreg='cd ~/agreg && ls -1t fiches/ | head -5'
 alias agreg-generer='~/agreg/generer.sh'
-alias agreg-valider='~/agreg/valider.sh'
-alias agreg-fiche='cat ~/agreg/fiches/$(date +%Y-%m-%d).md 2>/dev/null || ls -1t ~/agreg/fiches | head -1 | xargs -I{} cat ~/agreg/fiches/{}'
-alias agreg-etat='cat ~/agreg/etat.json'
+alias agreg-valider='~/agreg/valider.sh'       # validation locale (sans passer par mobile)
 alias agreg-log='tail -30 ~/agreg/logs/launch.log'
+alias agreg-poller-log='tail -30 ~/agreg/logs/poller.log'
 ```
-
-### Valider une rédaction (texte uniquement, pas de photo)
-
-```bash
-agreg-valider                              # session interactive, tu colles ta rédac
-agreg-valider redac.txt                    # depuis un fichier texte
-echo "ma rédaction..." | agreg-valider -   # depuis stdin
-```
-
-Tu peux taper en Markdown + LaTeX (`$x^2$`) ou en abréviations (`=>`, `forall`, `in`, `ker`, `Im`…). Claude valide le raisonnement, pas la forme.
 
 ## Structure
 
 ```
 ~/agreg/
-├── progression.json      # 150 sujets ordonnés (7 blocs, 15 mois)
-├── etat.json             # jour courant, sujet_courant_id, historique
-├── generer.sh            # script lancé par launchd
-├── valider.sh            # workflow de validation
+├── progression.json           # 150 sujets ordonnés (7 blocs)
+├── etat.json                  # jour courant + historique
+├── generer.sh                 # lancé par launchd à 22h55
+├── poller.sh                  # lancé par launchd /60s
+├── valider.sh                 # validation locale (secours)
 ├── prompts/
-│   ├── generer.md        # prompt pour la génération
-│   └── valider.md        # prompt pour la validation
-├── fiches/               # 1 fichier par jour : YYYY-MM-DD.md
-├── validations/          # évaluations de tes rédactions
-└── logs/                 # journaux d'exécution
+│   ├── generer.md
+│   └── valider.md
+├── docs/
+│   └── index.html             # GitHub Pages
+├── fiches/                    # 1 .md par jour (commité)
+├── validations/               # 1 .md par rédaction (commité par poller)
+└── logs/                      # local, gitignore
 ```
 
-## launchd
+## Configuration (~/.config/agreg/)
 
-Job installé : `~/Library/LaunchAgents/fr.even.agreg.plist`
+- `github-token` : PAT GitHub (chmod 600)
+- `env` : variables d'environnement (chmod 600)
+
+## Désactiver temporairement
 
 ```bash
-# Vérifier qu'il tourne
-launchctl list | grep fr.even.agreg
-
-# Désactiver temporairement
 launchctl unload ~/Library/LaunchAgents/fr.even.agreg.plist
-
-# Réactiver
-launchctl load ~/Library/LaunchAgents/fr.even.agreg.plist
-
-# Changer l'heure : éditer le .plist puis unload/load
+launchctl unload ~/Library/LaunchAgents/fr.even.agreg.poller.plist
 ```
 
-## Prochaines étapes (hors MVP)
+## Phase 3 (à venir)
 
-1. **Phase 2** — Accès téléphone (texte-only, pas de photo) :
-   - Option A : formulaire Tally qui affiche l'exo + champ texte → webhook Mac via Cloudflare Tunnel.
-   - Option B : page web statique privée (GitHub Pages / Vercel) + endpoint de validation.
-   - Option C : l'app Claude mobile avec un prompt type et la fiche collée manuellement.
-2. **Phase 3** — Blocage iOS :
-   - Mode Concentration "Nuit Agrégation" à 23h bloquant toutes les apps distractives.
-   - Raccourci qui ne peut désactiver le mode que si une validation réussie est détectée via l'API.
-
-## Progression
-
-7 blocs sur ~15 mois (nov 2026 → écrits 2027) :
-
-| Bloc | Thème | Sujets | Période |
-|------|-------|--------|---------|
-| A | Algèbre : structures (groupes, anneaux, corps) | 30 | mois 1-3 |
-| B | Algèbre linéaire et réduction | 25 | mois 3-4 |
-| C | Analyse : topologie, calcul différentiel | 25 | mois 5-6 |
-| D | Intégration, Fourier, analyse complexe | 20 | mois 7-8 |
-| E | Probabilités et statistiques | 20 | mois 9-10 |
-| F | Géométrie | 10 | mois 11 |
-| G | Révisions, oraux, développements | 20 | mois 12-15 |
-
-Total : **150 sujets** (extensible en ajoutant à `progression.json`).
+Blocage iOS via mode Concentration "Nuit Agrégation" désactivable seulement après validation réussie.
