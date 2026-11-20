@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Poller : scrute les issues GitHub avec label "agreg-redaction",
 # appelle Claude CLI pour valider, poste le commentaire, ferme l'issue.
-# Lancé par launchd chaque minute (~fr.even.agreg.poller).
+# Lancé par launchd chaque minute (fr.even.agreg.poller).
 
 set -euo pipefail
 
@@ -23,7 +23,6 @@ trap 'rm -f "$LOCK"' EXIT
 
 ts() { date +'%Y-%m-%d %H:%M:%S'; }
 
-# Charge token GitHub + PATH complet
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin"
 # shellcheck disable=SC1090
 source "$HOME/.config/agreg/env"
@@ -37,25 +36,22 @@ if [ -z "$GH_BIN" ] || [ ! -x "$CLAUDE_BIN" ]; then
 fi
 
 # Liste les issues ouvertes avec le label
-ISSUES_JSON=$("$GH_BIN" issue list --repo "$REPO" --label agreg-redaction --state open --json number,title,body,createdAt --limit 10)
+ISSUES_JSON=$("$GH_BIN" issue list --repo "$REPO" --label agreg-redaction --state open --json number --limit 10)
+NUMBERS=$(echo "$ISSUES_JSON" | python3 -c "import sys,json; [print(i['number']) for i in json.load(sys.stdin)]")
 
-COUNT=$(echo "$ISSUES_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
-if [ "$COUNT" = "0" ]; then
+if [ -z "$NUMBERS" ]; then
   exit 0
 fi
 
-echo "[$(ts)] $COUNT issue(s) à traiter" >> "$LOG"
+echo "[$(ts)] Issues à traiter : $(echo "$NUMBERS" | tr '\n' ' ')" >> "$LOG"
 
-PROMPT_VALIDER=$(cat "$AGREG_DIR/prompts/valider.md")
+PROMPT_VALIDER=$(cat "$AGREG_DIR/prompts/poller-valider.md")
 
-echo "$ISSUES_JSON" | python3 -c "
-import sys, json
-for issue in json.load(sys.stdin):
-    print(f\"{issue['number']}|||{issue['body']}\")
-" | while IFS='|||' read -r NUM BODY; do
-  # NUM reçoit le numéro, BODY reçoit le body (peut avoir des sauts de ligne encodés)
-  if [ -z "$NUM" ]; then continue; fi
+for NUM in $NUMBERS; do
   echo "[$(ts)] Traitement issue #$NUM" >> "$LOG"
+
+  # Récupère le body
+  BODY=$("$GH_BIN" issue view "$NUM" --repo "$REPO" --json body --jq .body)
 
   # Récupère la date de la fiche depuis le body
   DATE=$(echo "$BODY" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 || true)
@@ -65,54 +61,52 @@ for issue in json.load(sys.stdin):
   FICHE_PATH="$AGREG_DIR/fiches/$DATE.md"
 
   if [ ! -f "$FICHE_PATH" ]; then
-    "$GH_BIN" issue comment "$NUM" --repo "$REPO" --body "Aucune fiche trouvée pour valider. Abandon." > /dev/null
+    echo "Aucune fiche trouvée pour valider. Abandon." | "$GH_BIN" issue comment "$NUM" --repo "$REPO" --body-file - > /dev/null
     "$GH_BIN" issue close "$NUM" --repo "$REPO" > /dev/null
     continue
   fi
 
-  # Récupère la rédaction (texte après "---")
-  REDACTION=$(echo "$BODY" | python3 -c "
-import sys
-txt = sys.stdin.read()
-if '---' in txt:
-    print(txt.split('---', 1)[1].strip())
-else:
-    print(txt.strip())
-")
+  # Récupère la rédaction (texte après le premier "---")
+  REDACTION_FILE=$(mktemp)
+  printf '%s' "$BODY" > "$REDACTION_FILE.body"
+  python3 - <<PY > "$REDACTION_FILE"
+with open("$REDACTION_FILE.body") as f:
+    txt = f.read()
+print(txt.split("---", 1)[1].strip() if "---" in txt else txt.strip())
+PY
+  REDACTION=$(cat "$REDACTION_FILE")
+  rm -f "$REDACTION_FILE" "$REDACTION_FILE.body"
 
-  # Construit l'input pour Claude
-  INPUT=$(cat <<EOF
-$PROMPT_VALIDER
+  # Construit l'input Claude dans un fichier temp
+  INPUT_FILE=$(mktemp)
+  {
+    cat "$AGREG_DIR/prompts/poller-valider.md"
+    echo
+    echo "===== DEBUT DE LA FICHE DU JOUR ====="
+    echo
+    cat "$FICHE_PATH"
+    echo
+    echo "===== FIN DE LA FICHE ====="
+    echo
+    echo "===== DEBUT DE LA REDACTION DE FLORIAN issue $NUM ====="
+    echo
+    printf '%s\n' "$REDACTION"
+    echo
+    echo "===== FIN DE LA REDACTION ====="
+    echo
+    echo "Produis UNIQUEMENT la validation au format Markdown demande, commencant par # Validation."
+  } > "$INPUT_FILE"
 
----
-
-## Fiche à relire
-$(cat "$FICHE_PATH")
-
----
-
-## Rédaction de Florian (issue #$NUM)
-
-$REDACTION
-
----
-
-Produis UNIQUEMENT la validation au format Markdown demandé, commençant par \`# Validation —\`.
-Ne lis aucun fichier supplémentaire ni ne fais d'appel d'outil. Réponds directement avec la validation.
-EOF
-)
-
-  VALIDATION=$(echo "$INPUT" | "$CLAUDE_BIN" --print --permission-mode acceptEdits --allowedTools "Read" --add-dir "$AGREG_DIR" 2>>"$LOG")
+  VALIDATION=$("$CLAUDE_BIN" --print --permission-mode default --disallowedTools "Read,Write,Edit,Bash,Glob,Grep,WebFetch,WebSearch" < "$INPUT_FILE" 2>>"$LOG")
+  rm -f "$INPUT_FILE"
 
   if [ -z "$VALIDATION" ]; then
     echo "[$(ts)] ERREUR: validation vide pour #$NUM" >> "$LOG"
     continue
   fi
 
-  # Marqueur magique pour que la page le reconnaisse
   COMMENT=$(printf "<!-- agreg-validation -->\n%s" "$VALIDATION")
 
-  # Poste + ferme + sauvegarde
   echo "$COMMENT" | "$GH_BIN" issue comment "$NUM" --repo "$REPO" --body-file - > /dev/null
   "$GH_BIN" issue close "$NUM" --repo "$REPO" > /dev/null
 
